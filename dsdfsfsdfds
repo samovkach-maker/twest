@@ -1,0 +1,147 @@
+-- ТЕСТ ОБХОДА ЛИМИТА 1000 БАУНТИ
+local LocalPlayer = game:GetService("Players").LocalPlayer
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace = game:GetService("Workspace")
+local Players = game:GetService("Players")
+
+local function findRemote(name)
+    for _, obj in pairs(ReplicatedStorage:GetDescendants()) do
+        if obj.Name == name and obj:IsA("RemoteEvent") then return obj end
+    end
+    return nil
+end
+
+local results = "=== ТЕСТ ОБХОДА ЛИМИТА 1000 БАУНТИ ===\n\n"
+local startSlaps = 0
+local ls = LocalPlayer:FindFirstChild("leaderstats")
+if ls then
+    local s = ls:FindFirstChild("Slaps")
+    if s then startSlaps = s.Value end
+end
+
+local char = LocalPlayer.Character
+local hrp = char and char:FindFirstChild("HumanoidRootPart")
+
+-- 1. Сброс TotalBounty на себе
+results = results .. "1. Сброс TotalBounty:\n"
+if char then
+    local tb = char:FindFirstChild("TotalBounty")
+    if tb then
+        results = results .. "   TotalBounty было: " .. tb.Value .. "\n"
+        tb.Value = 0
+        results = results .. "   TotalBounty стало: " .. tb.Value .. "\n"
+    else
+        results = results .. "   TotalBounty не найден на своём персонаже\n"
+    end
+end
+
+-- 2. Сброс TotalBounty на ВСЕХ игроках
+results = results .. "\n2. Сброс TotalBounty у всех:\n"
+for _, p in ipairs(Players:GetPlayers()) do
+    if p.Character then
+        local tb = p.Character:FindFirstChild("TotalBounty")
+        if tb then
+            results = results .. "   " .. p.Name .. ": было " .. tb.Value
+            tb.Value = 0
+            results = results .. " → " .. tb.Value .. "\n"
+        end
+    end
+end
+
+-- 3. Попытка установить отрицательный баунти
+results = results .. "\n3. Отрицательный баунти через GeneralAbility:\n"
+local ga = findRemote("GeneralAbility")
+if ga and hrp then
+    pcall(function() ga:FireServer(-1000) end)
+    pcall(function() ga:FireServer(hrp, -1000) end)
+    pcall(function() ga:FireServer("-1000") end)
+    results = results .. "   Отправлены отрицательные значения\n"
+end
+
+-- 4. Сброс через BountyResponse с новыми аргументами
+results = results .. "\n4. BountyResponse сброс:\n"
+local br = findRemote("BountyResponse")
+if br then
+    local resetArgs = {
+        {0}, {"reset"}, {"clear"}, {"remove"}, {"delete"},
+        {LocalPlayer, 0}, {LocalPlayer, "reset"},
+        {"reset", "all"}, {"clear", "bounty"}
+    }
+    for _, args in ipairs(resetArgs) do
+        pcall(function() br:FireServer(unpack(args)) end)
+    end
+    results = results .. "   Отправлены команды сброса\n"
+end
+
+-- 5. Манипуляция с leaderstats
+results = results .. "\n5. Манипуляция leaderstats:\n"
+if ls then
+    for _, stat in pairs(ls:GetChildren()) do
+        results = results .. "   " .. stat.Name .. " = " .. tostring(stat.Value) .. "\n"
+        if stat.Name:lower():find("bounty") then
+            local old = stat.Value
+            pcall(function() stat.Value = 0 end)
+            results = results .. "   → Сброшен в 0 (было " .. tostring(old) .. ")\n"
+        end
+    end
+end
+
+-- 6. Удаление объекта TotalBounty
+results = results .. "\n6. Удаление TotalBounty:\n"
+if char then
+    local tb = char:FindFirstChild("TotalBounty")
+    if tb then
+        tb:Destroy()
+        results = results .. "   TotalBounty удалён\n"
+    end
+end
+
+-- 7. Сброс атрибутов
+results = results .. "\n7. Атрибуты:\n"
+if char then
+    local attrs = {"Bounty", "bounty", "TotalBounty", "totalBounty", "Bounti"}
+    for _, attr in ipairs(attrs) do
+        pcall(function() char:SetAttribute(attr, 0) end)
+        pcall(function() char:SetAttribute(attr, nil) end)
+    end
+    results = results .. "   Атрибуты сброшены\n"
+end
+
+-- 8. Попытка фарма после сброса
+results = results .. "\n8. Фарм после сброса:\n"
+if ga and hrp then
+    for i = 1, 20 do
+        pcall(function() ga:FireServer(hrp) end)
+        task.wait(0.03)
+    end
+    results = results .. "   20 ударов отправлено\n"
+end
+
+-- 9. Сброс через HumanoidDied
+results = results .. "\n9. Имитация смерти для сброса:\n"
+local hd = findRemote("HumanoidDied")
+if hd and char then
+    pcall(function() hd:FireServer(char) end)
+    pcall(function() hd:FireServer(LocalPlayer) end)
+    results = results .. "   Отправлен сигнал смерти\n"
+end
+
+-- 10. KillsUpdated
+results = results .. "\n10. KillsUpdated:\n"
+local ku = findRemote("KillsUpdated")
+if ku then
+    pcall(function() ku:FireServer(LocalPlayer, -1) end)
+    pcall(function() ku:FireServer(nil, 0) end)
+    results = results .. "   Отправлены сигналы\n"
+end
+
+-- Итог
+results = results .. "\n=== ИТОГ ==="
+results = results .. "\nСлапы: " .. startSlaps
+results = results .. "\nПРОВЕРЬ БАУНТИ НАД ГОЛОВОЙ"
+results = results .. "\nЕсли сбросилось - попробуй фармить снова"
+results = results .. "\nЕсли нет - лимит на сервере не обойти"
+
+setclipboard(results)
+print(results)
+print("\nСкопировано в буфер!")
