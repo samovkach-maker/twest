@@ -1,0 +1,66 @@
+-- Перехватчик FireServer для анализа убийства с bounty
+local LocalPlayer = game.Players.LocalPlayer
+local oldNamecall
+local recordedCalls = {}
+local recording = false
+
+-- Запуск записи
+local function startRecording()
+    recordedCalls = {}
+    recording = true
+    local mt = getrawmetatable(game)
+    oldNamecall = mt.__namecall
+    setreadonly(mt, false)
+    mt.__namecall = function(self, ...)
+        local method = getnamecallmethod()
+        local args = {...}
+        if method == "FireServer" and recording then
+            local path = "?"
+            pcall(function() path = self:GetFullName() end)
+            table.insert(recordedCalls, {
+                time = tick(),
+                remote = path,
+                args = { ... }
+            })
+        end
+        return oldNamecall(self, ...)
+    end
+    setreadonly(mt, true)
+end
+
+-- Остановка записи и вывод
+local function stopRecording()
+    recording = false
+    local mt = getrawmetatable(game)
+    setreadonly(mt, false)
+    mt.__namecall = oldNamecall
+    setreadonly(mt, true)
+    
+    local text = "=== ЗАПИСАННЫЕ FIRESERVER ===\n\n"
+    for i, call in ipairs(recordedCalls) do
+        text = text .. string.format("[%d] %s\n", i, call.remote)
+        for j, arg in ipairs(call.args) do
+            local val = tostring(arg)
+            if #val > 50 then val = val:sub(1,50).."..." end
+            text = text .. string.format("   Arg%d: %s (%s)\n", j, val, typeof(arg))
+        end
+    end
+    print(text)
+    setclipboard(text)
+    print("Данные скопированы в буфер обмена!")
+end
+
+-- GUI управления
+local gui = Instance.new("ScreenGui", LocalPlayer.PlayerGui)
+local btn = Instance.new("TextButton", gui)
+btn.Size = UDim2.new(0,200,0,40)
+btn.Position = UDim2.new(0.5,-100,0.5,-20)
+btn.Text = "СТАРТ ЗАПИСИ (60 сек)"
+btn.MouseButton1Click:Connect(function()
+    startRecording()
+    btn.Text = "ЗАПИСЬ ИДЕТ... УБЕЙ ИГРОКА С BOUNTY"
+    task.delay(60, function()
+        stopRecording()
+        btn.Text = "ГОТОВО. ПРОВЕРЬ КОНСОЛЬ (F9)"
+    end)
+end)
