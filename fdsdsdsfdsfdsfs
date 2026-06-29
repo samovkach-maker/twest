@@ -1,0 +1,142 @@
+-- Перехватчик FireServer с GUI для анализа убийства с bounty
+local LocalPlayer = game.Players.LocalPlayer
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local UserInputService = game:GetService("UserInputService")
+
+local recordedCalls = {}
+local recording = false
+local oldNamecall
+
+-- GUI
+local gui = Instance.new("ScreenGui", LocalPlayer.PlayerGui)
+local frame = Instance.new("Frame", gui)
+frame.Size = UDim2.new(0,350,0,450)
+frame.Position = UDim2.new(0.5,-175,0.5,-225)
+frame.BackgroundColor3 = Color3.fromRGB(20,20,20)
+frame.ClipsDescendants = true
+
+local title = Instance.new("TextLabel", frame)
+title.Size = UDim2.new(1,0,0,30)
+title.BackgroundColor3 = Color3.fromRGB(30,30,30)
+title.Text = "FIRE SERVER RECORDER"
+title.TextColor3 = Color3.white
+title.Font = Enum.Font.SourceSansBold
+title.TextSize = 14
+
+local output = Instance.new("ScrollingFrame", frame)
+output.Size = UDim2.new(1,-10,0,330)
+output.Position = UDim2.new(0,5,0,35)
+output.BackgroundColor3 = Color3.fromRGB(15,15,15)
+output.CanvasSize = UDim2.new(0,0,0,500)
+output.ScrollBarThickness = 5
+
+local outputText = Instance.new("TextLabel", output)
+outputText.Size = UDim2.new(1,-10,0,500)
+outputText.BackgroundTransparency = 1
+outputText.Text = "Нажми Start, чтобы начать запись\n\nЗатем убей игрока с bounty"
+outputText.TextColor3 = Color3.fromRGB(200,200,200)
+outputText.Font = Enum.Font.SourceSans
+outputText.TextSize = 12
+outputText.TextXAlignment = Enum.TextXAlignment.Left
+outputText.TextYAlignment = Enum.TextYAlignment.Top
+outputText.TextWrapped = true
+
+local startBtn = Instance.new("TextButton", frame)
+startBtn.Size = UDim2.new(0.8,0,0,35)
+startBtn.Position = UDim2.new(0.1,0,0,375)
+startBtn.BackgroundColor3 = Color3.fromRGB(40,140,40)
+startBtn.Text = "START RECORDING"
+startBtn.TextColor3 = Color3.white
+startBtn.Font = Enum.Font.SourceSansBold
+startBtn.TextSize = 14
+
+local copyBtn = Instance.new("TextButton", frame)
+copyBtn.Size = UDim2.new(0.8,0,0,30)
+copyBtn.Position = UDim2.new(0.1,0,0,415)
+copyBtn.BackgroundColor3 = Color3.fromRGB(60,60,180)
+copyBtn.Text = "COPY TO CLIPBOARD"
+copyBtn.TextColor3 = Color3.white
+copyBtn.Font = Enum.Font.SourceSansBold
+copyBtn.TextSize = 14
+
+-- функции записи
+local function startRecording()
+    recordedCalls = {}
+    recording = true
+    outputText.Text = "Запись началась! Ищи игрока с bounty и убей его.\nЗапись остановится автоматически через 60 сек."
+    
+    local mt = getrawmetatable(game)
+    oldNamecall = mt.__namecall
+    setreadonly(mt, false)
+    mt.__namecall = function(self, ...)
+        local method = getnamecallmethod()
+        local args = {...}
+        if method == "FireServer" and recording then
+            local path = "?"
+            pcall(function() path = self:GetFullName() end)
+            table.insert(recordedCalls, {
+                time = tick(),
+                remote = path,
+                args = { ... }
+            })
+            -- Обновим GUI
+            local lines = {}
+            for i = #recordedCalls, math.max(1, #recordedCalls-4), -1 do
+                local call = recordedCalls[i]
+                lines[#lines+1] = string.format("[%d] %s", i, call.remote)
+            end
+            outputText.Text = "Запись активна (" .. #recordedCalls .. " вызовов)\n\nПоследние:\n" .. table.concat(lines, "\n")
+        end
+        return oldNamecall(self, ...)
+    end
+    setreadonly(mt, true)
+end
+
+local function stopRecording()
+    if not recording then return end
+    recording = false
+    local mt = getrawmetatable(game)
+    setreadonly(mt, false)
+    mt.__namecall = oldNamecall
+    setreadonly(mt, true)
+    
+    local text = "=== ЗАПИСАННЫЕ FIRESERVER (" .. #recordedCalls .. " вызовов) ===\n\n"
+    for i, call in ipairs(recordedCalls) do
+        text = text .. string.format("[%d] %s\n", i, call.remote)
+        for j, arg in ipairs(call.args) do
+            local val = tostring(arg)
+            if #val > 60 then val = val:sub(1,60).."..." end
+            text = text .. string.format("   Arg%d: %s (%s)\n", j, val, typeof(arg))
+        end
+    end
+    
+    outputText.Text = text
+    setclipboard(text)
+end
+
+startBtn.MouseButton1Click:Connect(function()
+    if recording then
+        stopRecording()
+        startBtn.Text = "START RECORDING"
+    else
+        startRecording()
+        startBtn.Text = "STOP RECORDING"
+    end
+end)
+
+copyBtn.MouseButton1Click:Connect(function()
+    setclipboard(outputText.Text)
+end)
+
+-- Автостоп через 60 сек
+startBtn.MouseButton1Click:Connect(function()
+    if not recording then
+        task.delay(60, function()
+            if recording then
+                stopRecording()
+                startBtn.Text = "START RECORDING"
+            end
+        end)
+    end
+end)
